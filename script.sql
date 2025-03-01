@@ -4,50 +4,94 @@ CREATE DATABASE pandemic;
 -- 1.2 
 USE pandemic;
 
--- 2.1 
-CREATE TABLE countries (
-    country_id INT AUTO_INCREMENT PRIMARY KEY,
-    entity VARCHAR(255) NOT NULL,
-    code VARCHAR(10) NOT NULL UNIQUE
+-- 2.1 Creating tables
+CREATE TABLE Country (
+    Id INT PRIMARY KEY AUTO_INCREMENT,
+    Entity VARCHAR(255) NOT NULL,
+    Code VARCHAR(10) NOT NULL UNIQUE
 );
 
--- 2.2 
-INSERT INTO countries (entity, code)
-SELECT DISTINCT Entity, Code
-FROM infectious_cases;
+CREATE TABLE Disease_Statistics (
+    Country_id INT,
+    Year INT NOT NULL,
+    Number_yaws DECIMAL(20,10) DEFAULT NULL,
+    polio_cases INT DEFAULT NULL,
+    cases_guinea_worm INT DEFAULT NULL,
+    Number_rabies DECIMAL(20,10) DEFAULT NULL,
+    Number_malaria DECIMAL(20,10) DEFAULT NULL,
+    Number_hiv DECIMAL(20,10) DEFAULT NULL,
+    Number_tuberculosis DECIMAL(20,10) DEFAULT NULL,
+    Number_smallpox INT DEFAULT NULL,
+    Number_cholera_cases INT DEFAULT NULL,
+    PRIMARY KEY (Country_id , Year),
+    FOREIGN KEY (Country_id)
+        REFERENCES Country (Id) ON DELETE CASCADE
+);
 
--- 2.3 
-ALTER TABLE infectious_cases
-ADD COLUMN country_id INT,
-ADD FOREIGN KEY (country_id) REFERENCES countries(country_id) ON DELETE CASCADE;
+-- 2.2 Creating a function to convert text type to decimal
+DELIMITER //
+CREATE FUNCTION to_decimal(input TEXT) RETURNS DECIMAL(20,10) DETERMINISTIC NO SQL
+BEGIN
+    DECLARE result DECIMAL(20,10);
+    IF input IS NULL OR input = '' THEN
+        RETURN NULL;
+    END IF;
+    
+    SET result = CAST(input AS DECIMAL(20,10));
+    RETURN result;
+END //
+DELIMITER ;
+    
 
--- 2.4 
-UPDATE infectious_cases ic
-JOIN countries c ON ic.Entity = c.entity AND ic.Code = c.code
-SET ic.country_id = c.country_id;
+-- 2.3 Fill in the data
+INSERT INTO Country (Entity, Code)
+SELECT DISTINCT Entity, Code FROM infectious_cases;
 
--- 2.5 
-ALTER TABLE infectious_cases
-DROP COLUMN Entity,
-DROP COLUMN Code;
+INSERT INTO Disease_Statistics (
+    Country_id, Year, Number_yaws, polio_cases, cases_guinea_worm, 
+    Number_rabies, Number_malaria, Number_hiv, 
+    Number_tuberculosis, Number_smallpox, Number_cholera_cases
+)
+SELECT 
+    c.Id, 
+    ic.Year, 
+    to_decimal(ic.Number_yaws), 
+    NULLIF(ic.polio_cases, ''), 
+    NULLIF(ic.cases_guinea_worm, ''), 
+    to_decimal(ic.Number_rabies), 
+    to_decimal(ic.Number_malaria), 
+    to_decimal(ic.Number_hiv), 
+    to_decimal(ic.Number_tuberculosis), 
+    NULLIF(ic.Number_smallpox, ''), 
+    NULLIF(ic.Number_cholera_cases, '')
+FROM infectious_cases ic
+JOIN Country c ON ic.Code = c.Code;
+
+-- 2.4
+SELECT COUNT(*) FROM infectious_cases;
 
 -- 3.1 
-SELECT ic.country_id, c.entity, c.code, AVG(ic.number_rabies) AS avg_number_rabies, SUM(ic.number_rabies) AS sum_number_rabies
-FROM infectious_cases ic
-JOIN countries c ON ic.country_id = c.country_id
-WHERE ic.number_rabies != ''
-GROUP BY ic.country_id
-ORDER BY avg_number_rabies DESC
-LIMIT 10;
+SELECT 
+    Country_id, 
+    AVG(Number_rabies) AS avg_rabies,
+    MIN(Number_rabies) AS min_rabies,
+    MAX(Number_rabies) AS max_rabies,
+    SUM(Number_rabies) AS sum_rabies
+FROM Disease_Statistics
+WHERE Number_rabies IS NOT NULL  
+GROUP BY Country_id;
 
 -- 3.2 
-SELECT ic.country_id, c.entity, c.code, MIN(ic.number_rabies) AS min_number_rabies, SUM(ic.number_rabies) AS sum_number_rabies
-FROM infectious_cases ic
-JOIN countries c ON ic.country_id = c.country_id
-WHERE ic.number_rabies != ''
-GROUP BY ic.country_id
-ORDER BY min_number_rabies DESC
-LIMIT 10;
+SELECT 
+    Country_id, 
+    AVG(Number_rabies) AS avg_rabies,
+    MIN(Number_rabies) AS min_rabies,
+    MAX(Number_rabies) AS max_rabies,
+    SUM(Number_rabies) AS sum_rabies
+FROM Disease_Statistics
+WHERE Number_rabies IS NOT NULL  
+GROUP BY Country_id
+ORDER BY avg_rabies DESC;
 
 -- 3.3 
 SELECT ic.country_id, c.entity, c.code, MAX(ic.number_rabies) AS max_number_rabies, SUM(ic.number_rabies) AS sum_number_rabies
@@ -58,54 +102,42 @@ GROUP BY ic.country_id
 ORDER BY max_number_rabies DESC
 LIMIT 10;
 
--- 4.1 
+-- 4
+SET @current_date = CURDATE();
+
+SELECT
+    Year,
+    makedate(year, 1) AS Year_start_sate,
+    @current_date as 'Current_date',
+    FLOOR(DATEDIFF(@current_date, makedate(year, 1)) / 365) AS Year_difference
+FROM Disease_Statistics;
+
+-- 5.1
+DROP FUNCTION IF EXISTS YearDifference;
+
 DELIMITER //
-CREATE PROCEDURE add_column_if_not_exists()
+
+CREATE FUNCTION YearDifference(input_year INT)
+RETURNS INT DETERMINISTIC NO SQL
 BEGIN
-    IF NOT EXISTS (
-        SELECT * 
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'infectious_cases' 
-          AND COLUMN_NAME = 'start_of_year'
-    ) THEN
-        ALTER TABLE infectious_cases 
-        ADD COLUMN start_of_year DATE;
-    END IF;
+  DECLARE year_start_date DATE;
+  DECLARE year_difference INT;
+
+  SET year_start_date = MAKEDATE(input_year, 1);
+  SET year_difference = FLOOR(DATEDIFF(CURDATE(), year_start_date) / 365);
+
+  RETURN year_difference;
 END //
+
 DELIMITER ;
 
-UPDATE infectious_cases
-SET start_of_year = STR_TO_DATE(CONCAT(Year, '-01-01'), '%Y-%m-%d');
+-- 5.2
+ALTER TABLE disease_statistics
+ADD COLUMN Year_difference INT AFTER Year;
 
--- 4.2 
-ALTER TABLE infectious_cases
-ADD COLUMN `current_date` DATE;
+SET SQL_SAFE_UPDATES = 0;
+UPDATE disease_statistics AS ds
+SET Year_difference = YearDifference(ds.Year);
+SET SQL_SAFE_UPDATES = 1;
 
-UPDATE infectious_cases
-SET `current_date` = CURDATE();
-
--- 4.3 
-ALTER TABLE infectious_cases
-ADD COLUMN `year_difference` INT;
-
-UPDATE infectious_cases
-SET year_difference = TIMESTAMPDIFF(YEAR, start_of_year, current_date);
-
--- 5
-DELIMITER //
-CREATE FUNCTION get_year_diff(input_year INT) 
-RETURNS INT 
-DETERMINISTIC
-BEGIN
-    DECLARE start_date DATE;
-    DECLARE year_diff INT;
-    SET start_date = STR_TO_DATE(CONCAT(input_year, '-01-01'), '%Y-%m-%d');
-    SET year_diff = TIMESTAMPDIFF(YEAR, start_date, CURDATE());
-    RETURN year_diff;
-END //
-DELIMITER ;
-
-SELECT 
-    Year, 
-    get_year_diff(Year) AS year_difference
-FROM infectious_cases
+SELECT Year, Year_difference FROM disease_statistics;
