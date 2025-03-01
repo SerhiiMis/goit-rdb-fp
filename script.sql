@@ -1,7 +1,7 @@
--- 1.1
+-- 1.1 Database creation
 CREATE DATABASE pandemic;
 
--- 1.2 
+-- 1.2 Database usage
 USE pandemic;
 
 -- 2.1 Creating tables
@@ -67,10 +67,10 @@ SELECT
 FROM infectious_cases ic
 JOIN Country c ON ic.Code = c.Code;
 
--- 2.4
+-- 2.4 The comnmand
 SELECT COUNT(*) FROM infectious_cases;
 
--- 3.1 
+-- 3.1 Calculatnig the average, min, max, and sum for the each unique combination of Entity, Code or Id
 SELECT 
     Country_id, 
     AVG(Number_rabies) AS avg_rabies,
@@ -81,7 +81,7 @@ FROM Disease_Statistics
 WHERE Number_rabies IS NOT NULL  
 GROUP BY Country_id;
 
--- 3.2 
+-- 3.2 Sorting the result by average
 SELECT 
     Country_id, 
     AVG(Number_rabies) AS avg_rabies,
@@ -93,7 +93,7 @@ WHERE Number_rabies IS NOT NULL
 GROUP BY Country_id
 ORDER BY avg_rabies DESC;
 
--- 3.3 
+-- 3.3 10 lines to display
 SELECT ic.country_id, c.entity, c.code, MAX(ic.number_rabies) AS max_number_rabies, SUM(ic.number_rabies) AS sum_number_rabies
 FROM infectious_cases ic
 JOIN countries c ON ic.country_id = c.country_id
@@ -102,7 +102,7 @@ GROUP BY ic.country_id
 ORDER BY max_number_rabies DESC
 LIMIT 10;
 
--- 4
+-- 4 Year difference using Select
 SET @current_date = CURDATE();
 
 SELECT
@@ -112,7 +112,7 @@ SELECT
     FLOOR(DATEDIFF(@current_date, makedate(year, 1)) / 365) AS Year_difference
 FROM Disease_Statistics;
 
--- 5.1
+-- 5.1 Creating a function
 DROP FUNCTION IF EXISTS YearDifference;
 
 DELIMITER //
@@ -131,7 +131,7 @@ END //
 
 DELIMITER ;
 
--- 5.2
+-- 5.2 Using the function
 ALTER TABLE disease_statistics
 ADD COLUMN Year_difference INT AFTER Year;
 
